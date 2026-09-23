@@ -1,4 +1,7 @@
 plots/
+certification/
+manuscript/
+int3re.rds
 
 # Full Stan model files
 output/full/
