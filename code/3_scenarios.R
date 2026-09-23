@@ -472,7 +472,7 @@ q_inund_curve %>%
         legend.key.width = unit(2, "lines"))
 
 
-#ggsave(filename = "plots/ecovalue_curve.jpeg", width = 8, height = 6, units = "in")
+#ggsave(filename = "plots/fig2_ecovalue_curve.jpeg", bg = "white", width = 8, height = 6, units = "in")
 
 # Import habitat lookup from combined hydraulic/expert elicitation
 q_hab_lookup_combined <- read_csv("data/q_hab_lookup_combined.csv")
@@ -535,7 +535,7 @@ ggplot(q_hab_rest_raw) +
         legend.text = element_text(size = 16),
         legend.key.width = unit(2, "lines"))
 
-#ggsave(filename = "plots/rest_q_hab.jpeg", width = 8, height = 6, units = "in")
+#ggsave(filename = "plots/figS1_rest_q_hab.jpeg", bg = "white", width = 8, height = 6, units = "in")
 
 # How much inundated habitat is in San Acacia at 7000 cfs
 q_inund_curve %>%
@@ -932,7 +932,7 @@ labs(y = "Proportion of\nbaseline recruitment",
         legend.title = element_text(size = 16),
         legend.text = element_text(size = 14))
 
-#ggsave(filename = "plots/flow_aug_dates.jpeg", width = 6, height = 6, units = "in")
+#ggsave(filename = "plots/figS2_flow_aug_dates.jpeg", bg = "white", width = 6, height = 6, units = "in")
 
 ## Assess variability of flow windows ####
 # Boxplot of ranks of each year by start date  
@@ -981,8 +981,12 @@ berm_rest_hydro <- bind_rows(age0_dat_rest, age0_dat_berm_scen, aug_examp) %>%
                                 TRUE ~ "Temporary\nBerms"))
 
 # Figure 5 code
+#pal_df2 <- data.frame(Scenario = unique(berm_rest_hydro$Scenario),
+ #                    color = c("#a6cee3", "#1f78b4","#b2df8a"))
+
 pal_df2 <- data.frame(Scenario = unique(berm_rest_hydro$Scenario),
-                     color = c("#a6cee3", "#1f78b4","#b2df8a"))
+                      color = c("#56B4E9", "#D55E00", "#009E73"))
+
 
 cols2 <- setNames(pal_df2$color, pal_df2$Scenario)
 
@@ -991,6 +995,8 @@ raw_plot <- ggplot(berm_rest_hydro,
   geom_errorbar(aes(ymin = recruits_baseline/1000000, ymax = recruits_rest/1000000), color = "gray50")+
   geom_point(aes(y = recruits_baseline/1000000), color = "gray50")+
   geom_point()+
+  geom_vline(aes(xintercept = 28.3), linetype = 2) +
+  geom_vline(aes(xintercept = 113.), linetype = 2) +
   #scale_x_continuous(breaks = c(1000,3000,5000))+
   scale_color_manual(values = cols2)+
   labs(y = "Recruitment\n(millions)",
@@ -1014,6 +1020,8 @@ diff_plot <- ggplot(berm_rest_hydro,
   geom_point()+
   #scale_x_continuous(breaks = c(1000,3000, 5000))+
   scale_color_manual(values = cols2)+
+  geom_vline(aes(xintercept = 28.3), linetype = 2) +
+  geom_vline(aes(xintercept = 113.), linetype = 2) +
   labs(y = "Recruitment above\nbaseline (millions)",
        x = "Flox index")+
   theme_ipsum()+
@@ -1033,6 +1041,8 @@ diff_plot
 prop_plot <- ggplot(berm_rest_hydro,
        aes(cfs_baseline*0.0283168466, ratio_rest_med, color = Scenario)) +
   geom_point()+
+  geom_vline(aes(xintercept = 28.3), linetype = 2) +
+  geom_vline(aes(xintercept = 113.), linetype = 2) +
   geom_errorbar(aes(ymin = lower_ratio_rest, ymax = upper_ratio_rest))+
   #scale_x_continuous(breaks = c(1000,3000, 5000))+
   scale_y_continuous(limits = c(1,2.72))+
@@ -1054,7 +1064,7 @@ prop_plot
 
 raw_plot/plot_spacer()/diff_plot/plot_spacer()/prop_plot + plot_layout(heights =c(4.5, -2.1 ,4.5, -2.1, 4.5))
 
-#ggsave(filename = "plots/scenario_plot_v4_no_channel.jpeg", width = 6, height = 7, units = "in")
+#ggsave(filename = "plots/fig4_scenario_plot_v4_no_channel.jpeg", bg = "white", width = 6, height = 6, units = "in")
 
 # Create Table S1
 output <- berm_rest_hydro %>%
@@ -1066,7 +1076,7 @@ output <- berm_rest_hydro %>%
          `Recruit\nratio` = round(`Recruit\nratio`, 2),
          Discharge = round(Discharge, 1))
 
-#write_csv(output, "output/supp_tab_m3.csv")
+#write_csv(output, "output/supp_tab_m3_new_v2.csv")
 
 # Recruitment at individual restoration sites ####
 # Same scenario parameters
@@ -1153,15 +1163,15 @@ ggplot(recruits) +
         axis.title.x = element_text(size = 14, hjust = 0.5),
         axis.title.y = element_text(size = 14, hjust = 0.5))
 
-#ggsave(filename = "plots/recruit_rest_sites_no_channel.jpeg", width = 6, height = 5, units = "in")
+#ggsave(filename = "plots/figS3_recruit_rest_sites_no_channel.jpeg", width = 6, height = 5, units = "in")
 
-# Figure 6
+# Figure 5
 ggplot(recruits, 
        aes(cfs_baseline*0.0283168466, ratio_rest_med, color = site))+#, shape = rest_type))+
   geom_point(aes(size = size))+
   geom_errorbar(aes(ymin = lower_ratio_rest, ymax = upper_ratio_rest))+
   theme_ipsum()+
-  guides(color = "none")+
+  #guides(color = "none")+
   facet_wrap(~rest_type)+
   scale_color_colorblind()+
   labs(x=expression("Spring flow index (m"^{3}*"/s)"), y = "Proportion of baseline recruitment", 
@@ -1173,4 +1183,4 @@ ggplot(recruits,
         legend.title = element_text(size = 12),
         legend.text = element_text(size = 12))
 
-ggsave(filename = "plots/recruit_sites_ratio_no_channel.jpeg", width = 6, height = 5, units = "in")
+#ggsave(filename = "plots/fig5_recruit_sites_ratio_no_channel.jpeg", bg = "white", width = 6, height = 5, units = "in")
