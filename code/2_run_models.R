@@ -1285,8 +1285,9 @@ obs_catch_df <- data.frame(year = 2019:2024,
 
 mod_out_catch <- left_join(mod_out_oos, obs_catch_df) %>%
   mutate(model = factor(model,
-                           levels = c("LCC IPM", "May-June IPM", "BioOp Lin. Mod.", "Inund. IPM",                 
-                                      "Compos. Inund. IPM","Hydraul. LCC", "Compos. Hydraul. LCC")))
+                           levels = c("LCC IPM", "May-June IPM", "BioOp Lin. Mod.",
+                                      "Hydraul. LCC", "Compos. Hydraul. LCC", 
+                                      "Inund. IPM", "Compos. Inund. IPM")))
 
 mod_out_catch %>%
   ggplot(aes(x = model))+
@@ -1309,4 +1310,4 @@ mod_out_catch %>%
   theme(axis.text.x = element_text(angle = 90),
         panel.spacing.y = unit(0.1, "lines"))
 
-ggsave(filename = "plots/oos_results_new_names.jpeg", width = 8, height = 7, units = "in")
+ggsave(filename = "plots/fig3_oos_results_new_mod_order.jpeg", bg = "white", width = 8, height = 7, units = "in")
