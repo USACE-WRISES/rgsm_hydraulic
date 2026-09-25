@@ -1476,9 +1476,12 @@ server <- function(input, output, session) {
     leaflet(lines_sf) %>%
       addProviderTiles(providers$Esri.WorldImagery,
                        options = providerTileOptions(opacity = 0.5)) %>%
-      addProviderTiles(providers$CartoDB.VoyagerOnlyLabels) %>%
+      addTiles(
+        urlTemplate = "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
+        options = tileOptions(tileSize = 256)
+      ) %>%
       addPolylines(color   = ~ pal(flow_perm),
-                   weight  = 3,
+                   weight  = 5,
                    opacity = 0.8,
                    popup   = ~ htmltools::htmlEscape(flow_perm)) %>%
       addLegend(pal = pal, values = ~ flow_perm,
