@@ -822,7 +822,11 @@ ui <- fluidPage(
     files can then be combined in a spreadsheet to rank or compare sites based on their 
     projected recruitment benefit across the range of historical flow conditions."),
           p("For a detailed step-by-step guide to this workflow, see the ",
-            strong("User Walkthrough"), " linked from this tab."),
+            a(strong("User Walkthrough"), 
+              href   = "https://usace-wrises.github.io/rgsm_hydraulic/walkthrough",
+              target = "_blank",
+              rel    = "noopener noreferrer"),
+            " linked from this tab."),
           
           h4("Instructions"),
           p("Adjust the inputs in the sidebar to configure your scenario. 
