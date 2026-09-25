@@ -3,6 +3,9 @@ certification/
 manuscript/
 int3re.rds
 
+# Bundled code/files for the app; these are copies, main files are tracked elsewhere
+deploy_bundle/
+
 # Full Stan model files
 output/full/
 
