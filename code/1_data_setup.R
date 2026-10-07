@@ -1,3 +1,34 @@
+# =============================================================================
+# Script: 1_data_setup.R
+# Purpose: Read, format, and combine the monitoring, hydrologic, fish-release,
+#          fish-rescue, habitat-availability, and expert-elicitation data used
+#          by the RGSM population models. The first portion of the script
+#          follows the data-preparation workflow of Yackulic et al. (2022),
+#          while the final portion prepares additional out-of-sample data for
+#          model evaluation through 2024.
+#
+# Overview of workflow:
+#   1. Read the source datasets used by the original model workflow.
+#   2. Define the spatial and temporal indexing used throughout the model.
+#   3. Reformat drying, fish-release, and monitoring data into model inputs.
+#   4. Estimate VIE dispersal weights and summarize monitoring observations.
+#   5. Prepare habitat-availability, rescue-survival, and population-size data.
+#   6. Reformat expert-elicitation information into prior distributions.
+#   7. Save the complete in-sample model input object.
+#   8. Prepare new out-of-sample drying, release, catch, and flow data and
+#      save the resulting evaluation dataset.
+#
+# Key outputs:
+#   output/input_data.RData  -- model inputs for fitting the population models
+#   output/ee_list.RData     -- expert-elicitation data used by later scripts
+#   output/oos_data_new.RData -- out-of-sample data used for model evaluation
+#
+# Note: The original Yackulic et al. (2022) code (available at 
+#       https://doi.org/10.5281/zenodo.6842195) is retained where indicated.
+#       Comments added here describe the role of the code in the current RGSM
+#       analysis without changing the underlying calculations.
+# =============================================================================
+
 # Data set-up for models
 # Uses Yackulic code to format data for model runs
 # Code before OOS data is unaltered from Yackulic et al. 2022
@@ -5,12 +36,13 @@
 
 # Calculation of the larval carrying capacity index is in subsequent script
 
-####################
-#### STEP 1: Read in all data
-#####################
+# =============================================================================
+# STEP 1: Read in all data
+# =============================================================================
 
 
 
+# Core ASIR monitoring, drying, flow, release, rescue, and expert-elicitation source files.
 t2asir<-read.csv("data/yackulic2022_data/ASIRQuery4Combined.csv")
 tdry<-read.csv("data/yackulic2022_data/rivereyes_v2.csv")
 angQ<-read.csv("data/yackulic2022_data/abq_gage_08330000.csv")
@@ -30,12 +62,17 @@ sQ<-read.csv("data/yackulic2022_data/sQ.csv",header=T)[,c(3:19)]
 
 
 
-######################
-#### STEP 2: Define variables and reformat data
-######################
+# =============================================================================
+# STEP 2: Define variables and reformat data
+# =============================================================================
 
 
 
+# -----------------------------------------------------------------------------
+# Define the spatial and temporal indexing used throughout the model. The
+# coarse grid contains the three main river segments, while vgrid represents
+# the 200-m spatial units used for finer-scale drying and fish-release data.
+# -----------------------------------------------------------------------------
 # define two grids
 grid<-c(55.4,116,170,210.1) # start and end points for 3 main river segments
 vgrid<-seq(55.4,210.2,0.2) # represents all 200 meter segments in study area
@@ -43,6 +80,13 @@ crossgrid<-findInterval(vgrid[-length(vgrid)]+.05,grid)
 gridst_end<-rbind(range(which(crossgrid==1)),range(which(crossgrid==2)),range(which(crossgrid==3)))
 years<-c(2002:2018) ##years used to fit model
 Nyears<-length(years)
+# -----------------------------------------------------------------------------
+# Reformat drying data
+# Drying observations are converted to the same 200-m strata used by the
+# monitoring data, then summarized as the first and last Julian days on which
+# each spatial unit was dry in each model year. These values are later used to
+# exclude sampling and estimate the amount of river habitat remaining wet.
+# -----------------------------------------------------------------------------
 # reformat drying data
 tdry$ustrata<-findInterval(tdry$URM,vgrid)
 tdry$dstrata<-findInterval(tdry$LRM,vgrid)
@@ -57,6 +101,13 @@ for (k in 1:(length(vgrid)-1)){
     fdryday[j,k]<-ifelse(length(temp2)==0,NA,min(temp2))
     ldryday[j,k]<-ifelse(length(temp2)==0,NA,max(temp2))
   }}
+# -----------------------------------------------------------------------------
+# Reformat augmented fish-release data
+# Releases that span multiple 200-m strata are divided among the strata so
+# that the total number of released fish is preserved while assigning an
+# equal number of fish to each covered spatial unit. VIE codes are then used
+# to identify release cohorts and their subsequent observations.
+# -----------------------------------------------------------------------------
 # reformat augmented fish release data
 vkeep<-match(c("Date","Month","Year","C","L","S","Number","RM_up","RM_down"),names(t2vie))
 tvie<-t2vie[,vkeep]
@@ -66,7 +117,7 @@ tlen<-length(tvie$strata_down)
 vie<-tvie
 for (i in 1:tlen){
   temp<-tvie$strata_up[i]-tvie$strata_down[i]
-  vie$Number[i]<-tvie$Number[i]/(1+temp)
+  vie$Number[i]<-tvie$Number[i]/(1+temp) # distribute the release equally across covered strata
   if (temp>0){
     for (j in 1:temp){
       temp2<-tvie[i,]
@@ -90,6 +141,7 @@ rm(tvie,vkeep)
 ####
 Nstrata<-3
 Nvstrata<-length(vgrid)-1
+# Summaries of VIE releases at the coarse (three-segment) spatial scale.
 nw_um<-matrix(0,nrow=30,ncol=Nstrata) #summarized at coarse grid
 w_um<-matrix(0,nrow=6,ncol=Nstrata)
 nmons<-matrix(0,nrow=6,ncol=Nstrata)
@@ -126,7 +178,14 @@ for (i in 1:(Nyears-5)){
 w_um[6,3]<-sum(nw_um[25:26,3])
 ##### done reformating vie release data	
 
-#simplify and reformat monitoring database
+# -----------------------------------------------------------------------------
+# Simplify and reformat the monitoring database
+# Retain the fields needed for the population model, classify sampled and
+# unsampled habitat types, and assign each observation to a 200-m spatial
+# stratum and model period. Dry observations and larval-gear samples are
+# excluded from the regular monitoring dataset.
+# -----------------------------------------------------------------------------
+# simplify and reformat monitoring database
 keep<-match(c("ProjectName","DateSampled","SiteID","year", "month","RMStart","HabitatNumber","Habitat","SamplingEffort","RepeatedSamplingNumber",
               "Species","DepletionNumber","Gear","NumberCaptured","AgeClass","LengthSL","LengthMinSL","LengthMaxSL","VIEColor","VIELocation"),names(t2asir))
 tasir<-t2asir[,keep]
@@ -156,7 +215,11 @@ for (j in 1:length(tasir[,1])){
   tl1<-ldryday[(tasir$year[j]-2001),tasir$strata[j]]
   tasir$dry[j]<-ifelse(is.na(tf1)==TRUE|(tf1>tasir$jul[j])|(tl1<tasir$jul[j]),0,1)}
 # subset different asir data for more reformating
-###start with regular monitoring data
+# Regular monitoring data
+# Build one record per seine haul and create separate catch columns for
+# HYBAMA age classes and VIE categories. Discharge is assigned from the
+# Albuquerque gage for the upper reach and the San Acacia gage for the
+# downstream reaches.
 t2mon<-subset(tasir,tasir$ProjectName=="Hybognathus Amarus Population Monitoring"&tasir$month>3&tasir$month<11&tasir$cHab!=4&tasir$SamplingEffort!=""&tasir$SamplingEffort!="#N/A"&tasir$dry==0)
 t2mon$uni_id<-paste(t2mon$year,t2mon$jul,t2mon$RMStart,t2mon$HabitatNumber)
 t2mon$C<-ifelse(t2mon$year>2007,substr(paste(t2mon$VIEColor),1,1),"")
@@ -164,6 +227,7 @@ t2mon$L<-ifelse(t2mon$year>2007,substr(paste(t2mon$VIELocation),1,1),"")
 t2mon$VC<-match(paste(t2mon$C,t2mon$L,sep=""),Vcodes)
 t2mon$VC[which(t2mon$AgeClass==0&t2mon$VC>1)]<-1
 # summarize data to seine haul
+# Convert individual haul records into one row per unique sampling event.
 tmon<-data.frame(uni=sort(unique(t2mon$uni_id)))
 tmon$RMStart<-t2mon$RMStart[match(tmon[,1],t2mon$uni_id)]
 tmon$period<-t2mon$period[match(tmon[,1],t2mon$uni_id)]
@@ -177,7 +241,7 @@ tmon$HaulNo<-t2mon$HabitatNumber[match(tmon[,1],t2mon$uni_id)]
 tmon$cHab<-t2mon$cHab[match(tmon[,1],t2mon$uni_id)]
 tmon$effort<-as.numeric(paste(t2mon$SamplingEffort[match(tmon[,1],t2mon$uni_id)]))
 tmon$strata<-t2mon$strata[match(tmon[,1],t2mon$uni_id)]
-tmon$cQ<-ifelse(tmon$strata>573,tmon$angQ,tmon$sanaQ)
+tmon$cQ<-ifelse(tmon$strata>573,tmon$angQ,tmon$sanaQ) # select gage by river location
 tmon$hybama0<-0
 tmon$hybama1<-0
 tmon$hybama2<-0
@@ -206,7 +270,9 @@ for (i in 1:length(t3mon[,1])){
 tmon$type<-ifelse(tmon$cHab==1,1,2)
 tmon$SPt_id<-paste(tmon$year,tmon$jul,tmon$strata,tmon$type)
 tmon<-subset(tmon,tmon$cQ<1000) #remove seine hauls were discharge was greater than 1000 cfs
-####subset data to summarize all hauls on the same day, in the same habitat and same river segment
+# Summarize all seine hauls conducted on the same day, in the same habitat
+# type, and within the same coarse river segment. Catch and effort are summed,
+# while discharge is retained as the mean value across hauls.
 mon<-data.frame(spt=sort(unique(tmon$SPt_id)))
 mon$period<-tmon$period[match(mon[,1],tmon$SPt_id)]
 mon$jul<-tmon$jul[match(mon[,1],tmon$SPt_id)]
@@ -248,9 +314,16 @@ for (i in 1:length(mon[,1])){
 }
 vie_names<-c("hybama2","hybama3","hybama4","hybama5","hybama6","hybama7","hybama8",
              "hybama9","hybama10","hybama11","hybama12","hybama13","hybama14")
-mon$hybama_vie<-rowSums(mon[,vie_names])
+mon$hybama_vie<-rowSums(mon[,vie_names]) # total marked HYBAMA catch across VIE categories
 mon$c_id<-paste(mon$year,mon$jul,crossgrid[mon$strata],mon$type)
 
+# -----------------------------------------------------------------------------
+# Estimate VIE dispersal weights
+# Fish carrying VIE marks can move among the 200-m strata between release and
+# recapture. The Cauchy dispersal model below estimates the spatial weighting
+# used to redistribute marked-fish observations back toward their likely
+# release locations, following the approach described in Appendix S1.
+# -----------------------------------------------------------------------------
 ## fit vie dispersal analysis described in appendix S1 to determine weights 
 wm<-tw_m[,,1]+tw_m[,,2]
 wm2<-tapply(wm[1,],crossgrid,sum)
@@ -274,6 +347,8 @@ fitcauchy<-function(par){ # in units of 200 m sites
     t6<-sum(t3[t4]*dcauchy(tt2$strata[i],t4+par[5],exp(par[1]))/t5)
     predV[i]<-t6*tt2$effort[i]*a[tt2$type[i]]/400000}
   -1*sum(dnbinom(tt2$hybama_vie,mu=predV,size=exp(par[4]),log=TRUE))}
+# Fit the Cauchy dispersal parameters by maximizing the negative-binomial
+# likelihood of the observed VIE-marked catch.
 m<-optim(c(3,2,0,-2,0),fitcauchy,method="BFGS",hessian=TRUE)
 mweights<-matrix(NA,nrow=12,ncol=Nvstrata)
 for (i in 1:12){
@@ -291,6 +366,7 @@ mon$vieW<-0
 for (i in 1:length(mon[,1])){
   mon$vieW[i]<-ifelse(mon$year[i]<2008,NA,mweights[(mon$year[i]-2007),mon$strata[i]])}
 mon$Cstrata<-crossgrid[mon$strata]
+# Collapse observations to the coarse spatial unit used by the population model.
 monC<-data.frame(cid=sort(unique(mon$c_id)))
 monC$jul<-mon$jul[match(monC[,1],mon$c_id)]
 monC$year<-mon$year[match(monC[,1],mon$c_id)]
@@ -318,10 +394,20 @@ for (i in 1:length(monC[,1])){
   temp<-subset(mon[,tmn],mon$c_id==monC$cid[i])
   monC[i,smn]<-mean(temp)
 }
-#### Done reformating monthly April to October monitoring data
+# -----------------------------------------------------------------------------
+# Done reformatting monthly April to October monitoring data
+# -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# Reformat November monitoring data
+# November observations come from repeated sampling and are kept separately
+# because their sampling structure differs from the April-October monitoring.
+# They are later incorporated into the combined catch dataset.
+# -----------------------------------------------------------------------------
 #### reformat November data
 t2monre<-subset(tasir,tasir$ProjectName=="Hybognathus Amarus Population Monitoring Repeated"&tasir$VIEColor==""&tasir$VIELocation==""&tasir$dry==0)
 t2monre$uni_id<-paste(t2monre$year,t2monre$jul,t2monre$RMStart,t2monre$HabitatNumber)
+# Collapse November repeated-sampling observations to the same daily,
+# coarse-segment structure used for the main monitoring data.
 tmonre<-data.frame(uni_YSH=sort(unique(t2monre$uni_id)))
 tmonre$Date<-t2monre$Date[match(tmonre[,1],t2monre$uni_id)]
 tmonre$jul<-t2monre$jul[match(tmonre[,1],t2monre$uni_id)]
@@ -333,7 +419,7 @@ tmonre$HabNo<-t2monre$HabitatNumber[match(tmonre[,1],t2monre$uni_id)]
 tmonre$cHab<-t2monre$cHab[match(tmonre[,1],t2monre$uni_id)]
 tmonre$effort<-as.numeric(paste(t2monre$SamplingEffort[match(tmonre[,1],t2monre$uni_id)]))
 tmonre$Cstrata<-crossgrid[t2monre$strata[match(tmonre[,1],t2monre$uni_id)]]
-tmonre$cQ<-ifelse(tmonre$Cstrata==3,tmonre$angQ,tmonre$sanaQ)
+tmonre$cQ<-ifelse(tmonre$Cstrata==3,tmonre$angQ,tmonre$sanaQ) # upper reach uses Albuquerque gage
 tmonre$hybama_1<-0
 tmonre$hybama_2<-0
 tmonre$hybama_3<-0
@@ -374,7 +460,10 @@ for (i in 1:length(monre[,1])){
   monre[i,smn]<-mean(temp)
 }
 monre<-subset(monre,monre$cQ<1000)
-#### only looking at these data for habitat availabilityestimates
+# Habitat-availability observations
+# These data are used to estimate the proportion of available habitat in
+# sampled pool and run/riffle habitat classes. The 2009-2011 subset is retained
+# because the 2008 habitat-availability data are incomplete.
 t2est<-subset(tasir,tasir$ProjectName=="Hybognathus Amarus Population Estimation")
 t2est$uni_YSH<-paste(t2est$year,t2est$RMStart,t2est$HabitatNumber)
 test<-data.frame(uni_YSH=unique(t2est$uni_YSH))
@@ -406,9 +495,12 @@ for (i in 1:length(av[,1])){
   av$bHab[i]<-sum(subset(temp$effort,temp$cHab>2))
 }
 av$TotHab<-av$gHab+av$bHab
-av$pro<-av$gHab/av$TotHab
+av$pro<-av$gHab/av$TotHab # proportion of measured habitat classified as gHab
 av<-subset(av,av$year>2008) ### only use 2009-2011 because 2008 data is incomplete
-#### reformat data from Braun et al. 2015
+# Habitat-availability data from Braun et al. (2015)
+# Convert mesohabitat observations into the same broad habitat classes used
+# for the population-estimation data, then combine the two sources into a
+# common habitat-availability object.
 tmeso$Chab<-ifelse(tmeso$mesohab_cl==1|tmeso$mesohab_cl==7|tmeso$mesohab_cl==8|tmeso$mesohab_cl==14|tmeso$mesohab_cl==15,1,3)
 tmeso$Cstrata<-findInterval(tmeso$RM,grid)
 tmeso$angQ<-angQ$cfs[match(tmeso$Date,angQ$Date)]
@@ -431,12 +523,18 @@ for (j in 1:length(meso[,1])){
 meso$TotHab<-meso$gHab+meso$bHab
 meso$pro<-meso$gHab/meso$TotHab
 meso<-subset(meso,meso$Cstrata!=4)
+# Combine Braun et al. mesohabitat measurements with population-estimation
+# habitat observations for the model's habitat-availability input.
 mAV<-rbind(cbind(meso$Cstrata,meso$cQ/1000,meso$gHab,meso$gHab+meso$bHab),
            cbind(av$Cstrata,av$cQ/1000,av$gHab,av$gHab+av$bHab)) 
 NAVsamps<-dim(mAV)[1]
-#### done reformating and combining mesohabitat availability data
+# Done reformatting and combining mesohabitat availability data
 
-#### further summarize catch data 
+# =============================================================================
+# Further summarize catch data
+# =============================================================================
+# Create separate model datasets for age-1+ fish, VIE-marked fish, age-0
+# fish, and observations where age-0 and age-1+ fish could not be separated. 
 # isolate data for age - 1+ fish only
 tt<-subset(monC,(monC$hybama01==0&monC$month<10)|monC$month<7)
 mon1<-cbind((tt$year-2001),tt$jul,tt$Cstrata,tt$type,ifelse(tt$month<6,tt$hybama1+tt$hybama01,tt$hybama1))
@@ -461,7 +559,7 @@ colnames(monV)<-c("year","julian","Cstrata","habitat","catch")
 tt<-subset(monC,monC$hybama01==0&monC$month>6&monC$month<10)
 mon0<-cbind((tt$year-2001),tt$jul,tt$Cstrata,tt$type,tt$hybama0)
 colnames(mon0)<-c("year","julian","Cstrata","habitat","catch")
-mon0_effQ<-cbind(tt$effort,tt$cQ/1000)
+mon0_effQ<-cbind(tt$effort,tt$cQ/1000) # discharge scaled to 1,000 cfs
 Nobs_mon0<-dim(mon0)[1]
 
 #  isolate data where age -0  and  age - 1+ fish were not separated
@@ -478,19 +576,30 @@ mon01_effQ<-rbind(mon01_effQ,cbind(monre$effort,monre$cQ/1000))
 colnames(mon01)<-c("year","julian","Cstrata","habitat","catch")
 Nobs_mon01<-dim(mon01)[1]
 
-##read in results of population estimation drawn from Dudley et al., 2012
+# Population-size estimates used to scale the population model. The values
+# and coefficients of variation are converted to log scale for use as model
+# inputs.
 Nz<-c(1108430,1387948,267272,122381)
 lNz<-log(Nz)
 cvz<-c(0.3,0.259,0.372,0.376)
 Cz<-exp(1.96*sqrt(log(1+cvz^2)))
 lCz<-log(Cz)/1.96
 
+# -----------------------------------------------------------------------------
+# Reformat fish-rescue data
+# Fish-rescue observations are linked to the drying data so that rescued fish
+# can be associated with the portion of the river that remained available at
+# each Julian day. The resulting objects are used to construct rescue-related
+# model inputs.
+# -----------------------------------------------------------------------------
 ###read in, subset and reformat fish rescue data using drying data
 trescue<-subset(trescue,trescue[,1]>2008&trescue[,1]<2019)
 trescue$jul<-NA
 for (i in 1:length(trescue$jul)){
   trescue$jul[i]<-julian(as.Date(paste(trescue$year[i],trescue$month[i],trescue$dom[i],sep="-")),as.Date(paste(trescue$year[i],"03","31",sep="-")))[[1]]}
 trescue$strata<-findInterval(trescue$rm,vgrid)
+# Construct the rescue-survival input arrays across year, Julian day, and
+# coarse river segment.
 tR0<-matrix(NA,nrow=(Nyears-7),ncol=Nvstrata)
 tR1<-matrix(NA,nrow=(Nyears-7),ncol=Nvstrata)
 for (t in 1:(Nyears-7)){
@@ -517,7 +626,9 @@ R0[,3]<-rep(rep(c(1:Nstrata),each=Ntotjul),(Nyears-7))
 R1[,3]<-rep(rep(c(1:Nstrata),each=Ntotjul),(Nyears-7))
 maxStrataLen<-table(crossgrid)/5
 cum_phiR<-array(NA,dim=c(Nyears,Ntotjul,3))
-# calculate weighted average survival of rescued fish
+# Estimate the relationship between rescue survival and Julian day, then use
+# it to calculate cumulative survival-weighted proportions of river habitat
+# available through time.
 phiR$jul<-NA	
 for (j in 1:12){phiR$jul[j]<-julian(as.Date(paste(2000,phiR$month[j],phiR$day[j],sep="-")),as.Date("2000-03-31"))[[1]]}
 tm<-glm(cbind(phiR[,4],phiR[,3]-phiR[,4])~phiR[,5],family="binomial")
@@ -563,13 +674,18 @@ StrataLen[,,1]<-92.1*StrataLen_rm[,,1]/maxStrataLen[1]
 StrataLen[,,2]<-85.5*StrataLen_rm[,,2]/maxStrataLen[2]
 StrataLen[,,3]<-65*StrataLen_rm[,,3]/maxStrataLen[3]
 
-## reformat summarize expert ellicitation data
+# =============================================================================
+# Reformat and summarize expert-elicitation data
+# =============================================================================
+# Expert responses are converted from reported central estimates and interval
+# probabilities into the mean/SD quantities needed to construct model priors.
 ee<-list(ee1=ee1,ee2=ee2,ee3=ee3,ee4=ee4,ee5=ee5)
 # function to calculate standard error from quantile, upper, lower and mean info
 calcsig<-function(up,down,mean,q,INT=c(0,1000)){
   sig<-function(x){abs(pnorm(up,mean,x)-pnorm(down,mean,x)-q)}
   optimize(sig,interval=INT)$minimum}
-## 5a - create prior on movement out of reach
+# Movement prior: extract each expert's estimate and recover the associated
+# standard deviation from the reported interval and probability.
 #extract and convert info to sd
 emove<-matrix(NA,nrow=5,ncol=2)
 for (i in 1:5){
@@ -577,7 +693,8 @@ for (i in 1:5){
   emove[i,1]<-temp[1,6]
   emove[i,2]<-calcsig(temp[1,4],temp[1,3],temp[1,6],temp[1,5]/100)
 }
-## 6a,6b,6c - create priors on river width
+# River-width priors: repeat the same conversion for the three river-width
+# parameters across the eight reference discharge levels.
 #extract and convert info to sd
 Nexperts<-5
 ewidths<-array(NA,dim=c(5,3,2,8))
@@ -595,24 +712,30 @@ for (i in 1:5){
   }}
 refQ<-c(5,50,100,150,200,250,500,1000)/1000
 
+# Save all in-sample objects needed by the model-fitting script.
 save(Nyears, Nstrata, NAVsamps, Nobs_mon1, Nobs_mon0, Nobs_mon01, Nobs_monV, ewidths,
-                    Nexperts, emove, refQ, mon1, mon0, mon01, monV, StrataLen, lNz, lCz, R0, R1,
-                    cum_nd, Ntotjul, cum_phiR, NR0, NR1, w_um, mAV, nmons, w_m, mon1_effQ, mon01_effQ,
-                    mon0_effQ, monV_effQ, prop_nd, ee, sQ, aQ, sanaQ, angQ,
-                    file = "output/input_data.RData")
+     Nexperts, emove, refQ, mon1, mon0, mon01, monV, StrataLen, lNz, lCz, R0, R1,
+     cum_nd, Ntotjul, cum_phiR, NR0, NR1, w_um, mAV, nmons, w_m, mon1_effQ, mon01_effQ,
+     mon0_effQ, monV_effQ, prop_nd, ee, sQ, aQ, sanaQ, angQ,
+     file = "output/input_data.RData")
 
 # Save separately for use in 3_scenarios
+# Save expert-elicitation data separately because later scenario scripts
+# access these values directly.
 saveRDS(ee, "output/ee_list.RData")
 
-####################
-#### Prepare out of sample data for model evaluation
-#####################
+# =============================================================================
+# Prepare out-of-sample data for model evaluation
+# =============================================================================
 
-# This code is new to this analysis although it uses some of the out-of-sample code from Yackulic et al. 2022
+# This portion was added for the current analysis. It retains the structure of
+# the Yackulic et al. (2022) out-of-sample workflow while incorporating newer
+# drying, release, catch, and flow observations.
 
 library(tidyverse)
 
-## Original out of sample data
+# Original out-of-sample files are read first so the new datasets can be
+# formatted to the same column structure.
 oosD_orig<-read.csv("data/yackulic2022_data/oos_rivereyes.csv")
 oosR_orig<-read.csv("data/yackulic2022_data/oos_releases.csv")
 oosc_orig <-read.csv("data/yackulic2022_data/oos_catch.csv") 
@@ -629,7 +752,9 @@ keep<-match(c("Date.Collected","RM_Start","Haul","Habitat","Effort_m.2","year","
               "Sampling_Period"),names(oosc_orig))
 oosc_orig<-oosc_orig[,keep]
 
-### New Data
+# New out-of-sample data
+# The newer drying-eye and release datasets are standardized to the original
+# data structures before being used below.
 
 # Release data
 #Downloaded from:https://data.mendeley.com/datasets/nwc7k6rm47/6
@@ -654,8 +779,14 @@ new_oosr <- read_csv("data/new_oos/oosR_raw.csv") %>%
 oosD <- new_oosd
 oosR <- new_oosr
 
+# -----------------------------------------------------------------------------
+# Format out-of-sample drying and release data
+# The same spatial strata, Julian-day indexing, and cumulative availability
+# calculations used for the in-sample data are repeated for the additional
+# years.
+# -----------------------------------------------------------------------------
 #### Out of sample predictions
-### format out of sample data
+# Format out-of-sample drying data
 oosD$ustrata<-findInterval(oosD$URM,vgrid)
 oosD$dstrata<-findInterval(oosD$LRM,vgrid)
 oosD$jul<-NA
@@ -697,7 +828,8 @@ StrataLen_oos[,,1]<-92.1*StrataLen_rm_oos[,,1]/maxStrataLen[1]
 StrataLen_oos[,,2]<-85.5*StrataLen_rm_oos[,,2]/maxStrataLen[2]
 StrataLen_oos[,,3]<-65*StrataLen_rm_oos[,,3]/maxStrataLen[3]
 #
-#Original code commented out because these steps have already been done
+# Original code commented out because these formatting steps have already
+# been completed when the new release data were imported above.
 #vkeep2<-match(c("Date","Month","Year","C","L","S","Number","RM"),names(oosR))
 #oosR<-oosR[,vkeep2]
 oosR$strata<-findInterval(converter[match(oosR$RM,converter[,1]),2],vgrid)
@@ -720,12 +852,15 @@ for (i in 1:6){
   }}
 
 
-# Need 2019 catch data from oosc original
+# Add the original 2019 catch observations, which are not included in the
+# newer catch file used for the subsequent years.
 
 oosc_2019 <- oosc_orig %>%
   filter(Sampling_Period == 201910) 
 
-# New ASIR data
+# New ASIR catch data
+# Standardize the newer monthly haul data to the column structure expected by
+# the original out-of-sample workflow, then append the 2019 observations.
 raw_oosc <- read_csv("data/new_oos/PopMon_MonthlyHaulUSBR.csv")
 
 oosc <- raw_oosc %>%
@@ -749,9 +884,12 @@ oosc <- raw_oosc %>%
   bind_rows(oosc_2019) %>%
   select(-Sampling_Period) # This had to be added initially to filter just the appropriate 2019 and subsequent data
 
-#Need additional flow data
+# Additional flow data
+# Retrieve daily discharge from the two USGS gages for the years not contained
+# in the original flow files. These observations are combined with the
+# historical gage records before assigning discharge to each catch record.
 
-#Angostura reach
+# Angostura reach
 start.date <- "2021-01-01"
 end.date <- "2024-12-31"
 siteAng <- "08330000"
@@ -785,7 +923,8 @@ new_SanA_data <- readNWISdv(siteNumbers = siteSan,
 angQ_all <- bind_rows(angQ, new_ang_data)
 sanaQ_all <- bind_rows(sanaQ, new_SanA_data)
 
-# Re-start original oos code; change 
+# Re-start the original out-of-sample formatting workflow using the combined
+# historical and newly downloaded flow records.
 oosc<-subset(oosc,oosc$Habitat!=""&oosc$Gear!="larval")
 ghab<-c("","BW","MCPLPO","MCPO","MCSHPLPO","MCSHPO","PO","SCPLPO","SCPO","SCSHPLPO","SCSHPO","SHPO","MCED","MCSHED","SCED","SCSHED")
 oosc$cHab<-ifelse(is.na(match(oosc$Habitat,ghab))==FALSE,1,3)
@@ -852,10 +991,12 @@ for (i in 1:length(oos_C[,1])){
   temp<-subset(toosc[,tsm],toosc$c_id==oos_C$cid[i]) #subset data to catch and effort in a single survey
   oos_C[i,sm]<-colSums(temp) #sum these values
   temp<-subset(toosc[,tmn],toosc$c_id==oos_C$cid[i]) #subset to discharge
-  oos_C[i,smn]<-mean(temp) # mean discharge
+  oos_C[i,smn]<-mean(temp) # mean discharge across hauls in a single survey
 }
 
 Nobs_oosC<-dim(oos_C)[1]
 
+# Save the out-of-sample habitat-availability and catch objects used to
+# evaluate fitted models against observations from 2019 onward.
 save(cum_nd_oos, cum_phiR_oos, Nobs_oosC, Nstrata, oos_C, StrataLen_oos, w_m_oos,
      file = "output/oos_data_new.RData")
