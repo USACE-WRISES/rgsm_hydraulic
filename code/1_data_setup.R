@@ -576,8 +576,8 @@ mon01_effQ<-rbind(mon01_effQ,cbind(monre$effort,monre$cQ/1000))
 colnames(mon01)<-c("year","julian","Cstrata","habitat","catch")
 Nobs_mon01<-dim(mon01)[1]
 
-# Population-size estimates used to scale the population model. The values
-# and coefficients of variation are converted to log scale for use as model
+# Population-size estimates from Dudley et al. 2012 used to scale the population model. 
+# The values and coefficients of variation are converted to log scale for use as model
 # inputs.
 Nz<-c(1108430,1387948,267272,122381)
 lNz<-log(Nz)
